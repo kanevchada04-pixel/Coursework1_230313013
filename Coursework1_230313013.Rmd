@@ -1,0 +1,183 @@
+---
+title: "MTH6139 Time Series" 
+subtitle: "Coursework 1 -- Forecasting the S&P 500 with Meta Prophet" 
+author: "Kanev Chada" 
+date: "Spring term 2025" 
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab 
+    highlight: tango
+---
+
+```{r, echo=FALSE}
+# htmltools::img(src = knitr::image_uri("images/QMlogo.png"),
+#                alt = 'logo',
+#                style = 'position:absolute; top:0; right:0; padding:10px; width:20%;')
+```
+
+# Section 1: Introduction
+
+The aim of this project is to determine whether Meta Prophet can be used to model and forecast the S&P 500 index. The S&P 500 is one of the most widely followed stock market indices in the world and represents the performance of 500 large US companies.
+
+Because of its importance in financial markets, forecasting the S&P 500 provides a useful example of time series analysis. In this project, historical daily closing prices of the index are analysed and Meta's Prophet forecasting model is applied to generate future predictions.
+
+The project first explores the historical behaviour of the series through visualisations and summary statistics. It then fits a Prophet model and produces forecasts. Finally, an alternative model using log-transformed prices is considered in order to compare the results.
+
+## 1.1 Data Collection
+
+The S&P 500 historical data was downloaded from Yahoo Finance using the `quantmod` package in R. Prophet requires the dataset to be formatted as a dataframe with a date column called `ds` and a value column called `y`. The data was therefore converted into this format.
+
+```{r message=FALSE, warning=FALSE}
+library(quantmod)
+
+invisible(getSymbols("^GSPC", src = "yahoo", from = "2015-01-01"))
+
+sp500_prices <- data.frame(
+  ds = as.Date(index(GSPC)),
+  y = as.numeric(Cl(GSPC))
+)
+
+head(sp500_prices)
+```
+## 1.2 Exploratory Analysis
+
+Before building a forecasting model, it is useful to explore the behaviour of the time series. Visualising the data helps identify important features such as trends, volatility, and sudden changes in the index level.
+
+```{r}
+library(ggplot2)
+
+ggplot(sp500_prices, aes(x = ds, y = y)) +
+  geom_line() +
+  labs(
+    title = "S&P 500 Daily Closing Prices",
+    x = "Date",
+    y = "Closing Price"
+  ) +
+  theme_minimal()
+```
+
+The plot shows a strong long-term upward trend in the S&P 500 over the sample period. However, the series also displays periods of increased volatility, where prices move sharply over a short period of time. A particularly noticeable fall appears in early 2020, which reflects the market disruption due to the COVID-19 pandemic.
+
+## 1.3 Moving Average and Trend Discussion
+
+To make the underlying trend easier to see, a 30-day moving average is calculated. This smooths out short-term fluctuations and highlights the broader direction of the series.
+
+```{r message=FALSE, warning=FALSE}
+options(xts.warn_dplyr_breaks_lag = FALSE)
+library(dplyr)
+
+sp500_prices <- sp500_prices %>% 
+  mutate(moving_average_30 = zoo::rollmean(y, k = 30, fill = NA, align = "right"))
+
+ggplot(sp500_prices, aes(x = ds)) +
+  geom_line(aes(y = y), alpha = 0.5) +
+  geom_line(aes(y = moving_average_30)) +
+  labs(
+    title = "S&P 500 with 30-Day Moving Average",
+    x = "Date",
+    y = "Closing Price"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+summary(sp500_prices$y)
+```
+
+## 1.4 Variance Stabilisation Using Log Transformation
+
+Financial time series often exhibit increasing variance as the level of the series grows. 
+One common technique to stabilise the variance is to apply a logarithmic transformation 
+to the data. This transformation compresses large values and can make the series more 
+stable over time.
+
+```{r}
+sp500_prices$log_y <- log(sp500_prices$y)
+
+ggplot(sp500_prices, aes(x = ds, y = log_y)) +
+  geom_line() +
+  labs(
+    title = "Log-Transformed S&P 500 Prices",
+    x = "Date",
+    y = "Log Price"
+  ) +
+  theme_minimal()
+```
+
+The log-transformed series appears smoother and the variability becomes more stable 
+through time. Log transformations are commonly used in financial time series analysis 
+because returns and growth rates are naturally related to logarithmic changes.
+
+# Section 2: Forecasting with Meta Prophet
+
+Meta Prophet is a time series forecasting tool developed by Meta that is designed to model time series data with strong trends and potential seasonal components. In this section, Prophet is applied to the S&P 500 data to generate a forecast.
+
+```{r}
+```{r message=FALSE, warning=FALSE}
+library(prophet)
+
+prophet_data <- sp500_prices[, c("ds","y")]
+
+prophet_model <- prophet(prophet_data)
+
+future_dates <- make_future_dataframe(prophet_model, periods = 180)
+
+forecast <- predict(prophet_model, future_dates)
+```
+
+## 2.1 Prophet Forecast
+
+```{r}
+plot(prophet_model, forecast)
+```
+
+The forecast plot shows the expected future trajectory of the S&P 500 based on historical trends. The dark line represents the predicted values while the shaded region shows the uncertainty interval.
+
+## 2.2 Prophet Components
+
+```{r warning=FALSE, message=FALSE}
+prophet_plot_components(prophet_model, forecast)
+```
+
+These plots show how Prophet breaks down the time series into components such as the overall trend and other effects captured by the model.
+
+## 2.3 Forecast Using Log-Transformed Data
+
+In addition to forecasting the raw price series, Prophet can also be applied to the log-transformed data. Log transformations are often used in financial time series analysis because they stabilise variance and can make trends easier to model.
+
+```{r message=FALSE, warning=FALSE}
+log_prophet_data <- data.frame(
+  ds = sp500_prices$ds,
+  y = log(sp500_prices$y)
+)
+
+log_prophet_model <- prophet(log_prophet_data)
+
+log_future <- make_future_dataframe(log_prophet_model, periods = 180)
+
+log_forecast <- predict(log_prophet_model, log_future)
+
+plot(log_prophet_model, log_forecast)
+```
+
+The forecast using log-transformed prices produces a smoother projection because the logarithmic transformation reduces the influence of large price movements. This approach is commonly used in financial time series analysis because financial returns are naturally related to logarithmic changes.
+
+Both the raw-price model and the log-price model capture the overall upward trend in the S&P 500.However, the log-transformed model produces a smoother representation of growth and may be more appropriate when the variance of the series increases with the level of the data.
+
+
+# Section 3: Discussion and Conclusion
+
+This project explored the use of Meta Prophet for modelling and forecasting the S&P 500 index. 
+Exploratory analysis revealed a strong long-term upward trend combined with periods of volatility, 
+including the sharp market decline during the COVID-19 pandemic.
+
+The Prophet forecasting model successfully captured the overall upward trend in the index and 
+generated forecasts with uncertainty intervals. A second model using log-transformed data was 
+also estimated, which produced a smoother forecast due to variance stabilisation.
+
+Although Prophet provides a useful statistical forecasting framework, financial markets are 
+influenced by many external factors such as macroeconomic conditions, interest rates and 
+geopolitical events. Therefore, forecasts should be interpreted as statistical projections 
+rather than precise predictions of future market performance.
